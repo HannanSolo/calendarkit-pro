@@ -1,5 +1,34 @@
 # Pro-Scheduler Changelog
 
+## Multi-Day All-Day Events
+
+### All-Day & Multi-Day Event Support
+- `lib/allDayLayout.ts` - Lane-packing layout algorithm for spanning event bars
+- All-day events render as horizontal bars spanning across multiple days
+- Month View restructured to week-based rows with spanning section above day cells
+- Week View gains dedicated all-day section between header and time grid
+- Day View gains all-day section between header and time grid
+- EventModal now includes allDay toggle with date-only inputs
+- Drag-drop preserves allDay flag and event span
+- Events split at week boundaries in Month view with correct border-radius
+
+### New Files
+```
+lib/allDayLayout.ts
+```
+
+### Modified Files
+```
+views/MonthView.tsx - Restructured to week-based rows with all-day spanning bars
+views/WeekView.tsx - Added all-day section with lane-packed spanning layout
+views/DayView.tsx - Added all-day section above time grid
+components/EventModal.tsx - Added allDay toggle, date-only inputs, day duration badge
+hooks/useCalendarLogic.ts - AllDay-aware drag-drop handling
+app/page.tsx - Added multi-day all-day demo events
+```
+
+---
+
 ## Features Added
 
 ### Event Resizing

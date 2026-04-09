@@ -1,11 +1,12 @@
-import React from 'react';
-import { format, differenceInMinutes, isToday, isSameDay } from 'date-fns';
+import React, { useMemo, useCallback } from 'react';
+import { format, differenceInMinutes, isToday, isSameDay, startOfDay, isBefore, isAfter } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { CalendarEvent } from '../types';
 import { cn } from '../utils';
 import { DraggableEvent } from '../components/dnd/DraggableEvent';
 import { DroppableCell } from '../components/dnd/DroppableCell';
 import { ResizableEvent } from '../components/dnd/ResizableEvent';
+import { partitionEvents, isAllDayEvent } from '../lib/allDayLayout';
 import { Locale } from 'date-fns';
 
 interface DayViewProps {
@@ -53,17 +54,30 @@ export const DayView: React.FC<DayViewProps> = ({
   }, []);
 
   // Timezone adjustment helper
-  const getZonedDate = (date: Date) => {
+  const getZonedDate = useCallback((date: Date) => {
     return timezone ? toZonedTime(date, timezone) : date;
-  };
+  }, [timezone]);
 
   const zonedNow = getZonedDate(now);
 
-  // Filter events for the current day
-  const dayEvents = events.filter(e => {
+  // Partition events once, then filter each bucket for the current day
+  const { allDayEvents: allAllDay, timedEvents } = useMemo(
+    () => partitionEvents(events),
+    [events]
+  );
+
+  const dayStart = startOfDay(currentDate);
+
+  const allDayEvents = useMemo(() => allAllDay.filter(e => {
+    const evStart = startOfDay(getZonedDate(e.start));
+    const evEnd = startOfDay(getZonedDate(e.end));
+    return !isBefore(dayStart, evStart) && !isAfter(dayStart, evEnd);
+  }), [allAllDay, getZonedDate, dayStart]);
+
+  const dayEvents = useMemo(() => timedEvents.filter(e => {
     const zonedStart = getZonedDate(e.start);
     return isSameDay(zonedStart, currentDate);
-  });
+  }), [timedEvents, getZonedDate, currentDate]);
 
   const timeFormat = locale?.code === 'fr' ? 'H:mm' : 'h a';
   const eventTimeFormat = locale?.code === 'fr' ? 'H:mm' : 'h:mm a';
@@ -84,6 +98,42 @@ export const DayView: React.FC<DayViewProps> = ({
                 )}
             </div>
         </div>
+
+        {/* All-Day Section */}
+        {allDayEvents.length > 0 && (
+          <div className="border-b-[0.5px] border-border/50 bg-muted/10 px-4 py-2 shrink-0">
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider w-16 text-center shrink-0">
+                All day
+              </span>
+              <div className="flex-1 flex flex-col gap-1">
+                {allDayEvents.slice(0, 3).map(event => (
+                  <DraggableEvent key={event.id} event={event}>
+                    <div
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg cursor-pointer truncate transition-all hover:shadow-md"
+                      style={{
+                        backgroundColor: `${event.color || 'var(--primary)'}25`,
+                        color: event.color || 'var(--primary)',
+                        borderLeft: `3px solid ${event.color || 'var(--primary)'}`,
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEventClick?.(event);
+                      }}
+                    >
+                      {event.title}
+                    </div>
+                  </DraggableEvent>
+                ))}
+                {allDayEvents.length > 3 && (
+                  <div className="text-[10px] text-primary font-semibold px-3 py-0.5">
+                    +{allDayEvents.length - 3} more
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Grid */}
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto relative">

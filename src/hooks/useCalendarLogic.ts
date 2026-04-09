@@ -233,7 +233,11 @@ export const useCalendarLogic = ({
 
     let newStart: Date;
 
-    if (view === 'month') {
+    if (activeEvent.allDay) {
+        // All-day events: shift by whole-day difference, preserve span
+        newStart = new Date(overDate);
+        newStart.setHours(0, 0, 0, 0);
+    } else if (view === 'month') {
         // For month view, overDate is the day cell
         // We need to preserve the original time but change the date
         if (timezone) {

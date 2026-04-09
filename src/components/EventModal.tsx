@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from './ui/Modal';
 import { CalendarEvent, EventType, EventAttachment, EventReminder } from '../types';
-import { format, formatDistanceToNow, differenceInMinutes } from 'date-fns';
+import { format, formatDistanceToNow, differenceInMinutes, differenceInCalendarDays, startOfDay } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Clock, MapPin, AlignLeft, Trash2, X, Edit2,
@@ -170,20 +170,37 @@ export const EventModal: React.FC<EventModalProps> = ({
 
   const formatDateForInput = (date: Date | undefined) => {
     if (!date) return '';
+    if (formData.allDay) return format(date, 'yyyy-MM-dd');
     return format(date, "yyyy-MM-dd'T'HH:mm");
   };
 
   const handleDateChange = (field: 'start' | 'end', value: string) => {
-    const date = new Date(value);
+    let date: Date;
+    if (formData.allDay) {
+      // date-only input gives "YYYY-MM-DD" which parses as UTC midnight
+      // Construct in local time to avoid timezone shift
+      const [y, m, d] = value.split('-').map(Number);
+      date = new Date(y, m - 1, d);
+    } else {
+      date = new Date(value);
+    }
     if (isNaN(date.getTime())) return;
 
     if (field === 'start') {
-        const duration = formData.end!.getTime() - formData.start!.getTime();
-        setFormData(prev => ({
-            ...prev,
-            start: date,
-            end: new Date(date.getTime() + duration)
-        }));
+        if (formData.allDay) {
+            // For all-day events, preserve the span in days
+            const daySpan = differenceInCalendarDays(formData.end!, formData.start!);
+            const newEnd = new Date(date);
+            newEnd.setDate(newEnd.getDate() + Math.max(0, daySpan));
+            setFormData(prev => ({ ...prev, start: date, end: newEnd }));
+        } else {
+            const duration = formData.end!.getTime() - formData.start!.getTime();
+            setFormData(prev => ({
+                ...prev,
+                start: date,
+                end: new Date(date.getTime() + duration)
+            }));
+        }
     } else {
         if (date < formData.start!) {
              setFormData(prev => ({ ...prev, start: date, end: date }));
@@ -212,6 +229,28 @@ export const EventModal: React.FC<EventModalProps> = ({
       ...prev,
       reminders: prev.reminders?.filter(r => r.id !== id)
     }));
+  };
+
+  const handleAllDayToggle = (checked: boolean) => {
+    if (checked) {
+      setFormData(prev => ({
+        ...prev,
+        allDay: true,
+        start: startOfDay(prev.start!),
+        end: startOfDay(prev.end || prev.start!),
+      }));
+    } else {
+      const start = new Date(formData.start!);
+      start.setHours(9, 0, 0, 0);
+      const end = new Date(start);
+      end.setHours(10, 0, 0, 0);
+      setFormData(prev => ({
+        ...prev,
+        allDay: false,
+        start,
+        end,
+      }));
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -248,6 +287,10 @@ export const EventModal: React.FC<EventModalProps> = ({
 
   const getDurationText = () => {
     if (!formData.start || !formData.end) return '';
+    if (formData.allDay) {
+      const days = differenceInCalendarDays(formData.end, formData.start) + 1;
+      return days === 1 ? '1 day' : `${days} days`;
+    }
     const mins = differenceInMinutes(formData.end, formData.start);
     if (mins < 60) return `${mins} min`;
     const hours = Math.floor(mins / 60);
@@ -312,15 +355,23 @@ export const EventModal: React.FC<EventModalProps> = ({
           <div className="flex items-center gap-2 px-3 py-1.5 bg-background/60 backdrop-blur-sm rounded-lg border border-border/30">
             <Calendar className="w-4 h-4 text-muted-foreground" />
             <span className="font-medium">
-              {event?.start && format(new Date(event.start), 'EEE, MMM d')}
+              {event?.allDay && event?.start && event?.end && differenceInCalendarDays(new Date(event.end), new Date(event.start)) > 0
+                ? `${format(new Date(event.start), 'MMM d')} – ${format(new Date(event.end), 'MMM d, yyyy')}`
+                : event?.start && format(new Date(event.start), 'EEE, MMM d')}
             </span>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-background/60 backdrop-blur-sm rounded-lg border border-border/30">
-            <Clock className="w-4 h-4 text-muted-foreground" />
-            <span className="font-medium">
-              {event?.start && format(new Date(event.start), 'h:mm a')} – {event?.end && format(new Date(event.end), 'h:mm a')}
-            </span>
-          </div>
+          {event?.allDay ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 backdrop-blur-sm rounded-lg border border-primary/20">
+              <span className="font-medium text-primary">{translations.allDay || 'All Day'}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-background/60 backdrop-blur-sm rounded-lg border border-border/30">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <span className="font-medium">
+                {event?.start && format(new Date(event.start), 'h:mm a')} – {event?.end && format(new Date(event.end), 'h:mm a')}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -527,6 +578,28 @@ export const EventModal: React.FC<EventModalProps> = ({
             />
           </div>
 
+          {/* All Day Toggle */}
+          <div className="flex items-center justify-between px-1">
+            <span className="text-sm font-medium text-foreground">{translations.allDay || 'All Day'}</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={formData.allDay}
+              onClick={() => handleAllDayToggle(!formData.allDay)}
+              className={cn(
+                "relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors cursor-pointer",
+                formData.allDay ? "bg-primary" : "bg-muted"
+              )}
+            >
+              <span
+                className={cn(
+                  "pointer-events-none inline-block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform",
+                  formData.allDay ? "translate-x-5" : "translate-x-0"
+                )}
+              />
+            </button>
+          </div>
+
           {/* Date & Time Row */}
           <div className="flex items-center gap-3 p-4 rounded-2xl bg-muted/20 border border-border/30">
             <div className="p-2 bg-primary/10 rounded-xl shrink-0">
@@ -536,7 +609,7 @@ export const EventModal: React.FC<EventModalProps> = ({
               <div>
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1 block">Start</label>
                 <input
-                  type="datetime-local"
+                  type={formData.allDay ? "date" : "datetime-local"}
                   className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-sm font-medium text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                   value={formatDateForInput(formData.start)}
                   onChange={e => handleDateChange('start', e.target.value)}
@@ -545,7 +618,7 @@ export const EventModal: React.FC<EventModalProps> = ({
               <div>
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1 block">End</label>
                 <input
-                  type="datetime-local"
+                  type={formData.allDay ? "date" : "datetime-local"}
                   className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-sm font-medium text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                   value={formatDateForInput(formData.end)}
                   onChange={e => handleDateChange('end', e.target.value)}

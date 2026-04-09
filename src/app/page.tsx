@@ -58,6 +58,35 @@ const generateDemoEvents = (): CalendarEvent[] => {
   events.push(createEvent("10", "Demo Day", 5, 14, 2, "work", "#3b82f6", "room-c"));
   events.push(createEvent("11", "Happy Hour", 5, 17, 2, "personal", "#10b981"));
 
+  // Multi-day all-day events
+  events.push({
+    id: "ad-1",
+    title: "Team Offsite",
+    start: addDays(weekStart, 1), // Monday
+    end: addDays(weekStart, 3),   // Wednesday
+    allDay: true,
+    calendarId: "work",
+    color: "#8b5cf6",
+  });
+  events.push({
+    id: "ad-2",
+    title: "Holiday",
+    start: addDays(weekStart, 5), // Friday
+    end: addDays(weekStart, 5),   // Single day
+    allDay: true,
+    calendarId: "personal",
+    color: "#10b981",
+  });
+  events.push({
+    id: "ad-3",
+    title: "Conference",
+    start: addDays(weekStart, 3), // Wednesday
+    end: addDays(weekStart, 6),   // Saturday
+    allDay: true,
+    calendarId: "work",
+    color: "#f59e0b",
+  });
+
   return events;
 };
 

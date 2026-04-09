@@ -8,6 +8,7 @@ A professional, feature-rich React calendar component with drag-and-drop, recurr
 ## Features
 
 - **5 Views** - Month, Week, Day, Agenda, and Resource views
+- **Multi-Day Events** - All-day and multi-day events with spanning bars across days
 - **Drag & Drop** - Move events with smooth animations and grid snapping
 - **Event Resize** - Drag event edges to adjust duration
 - **Recurring Events** - Daily, weekly, monthly, yearly with RRule support
@@ -163,13 +164,13 @@ interface CalendarTheme {
 ## Views
 
 ### Month View
-Full month grid with event indicators. Click a date to switch to day view.
+Full month grid with event indicators and multi-day spanning bars. Click a date to switch to day view.
 
 ### Week View
-7-day view with hourly time slots. Drag events to reschedule, resize from bottom edge.
+7-day view with hourly time slots. Includes a dedicated all-day section for all-day and multi-day events. Drag events to reschedule, resize from bottom edge.
 
 ### Day View
-Single day with 15-minute time slots. Ideal for detailed scheduling.
+Single day with 15-minute time slots and an all-day section at the top. Ideal for detailed scheduling.
 
 ### Agenda View
 Chronological list of upcoming events for 30 days. Shows event details and metadata.
@@ -192,6 +193,39 @@ const recurringEvent: CalendarEvent = {
   },
 };
 ```
+
+## All-Day & Multi-Day Events
+
+Set `allDay: true` to create all-day events. Multi-day events span across multiple days as a continuous bar in Month and Week views.
+
+```tsx
+const events: CalendarEvent[] = [
+  // Single-day all-day event
+  {
+    id: '1',
+    title: 'Holiday',
+    start: new Date(2025, 0, 1),
+    end: new Date(2025, 0, 1),
+    allDay: true,
+  },
+  // Multi-day event spanning 3 days
+  {
+    id: '2',
+    title: 'Team Offsite',
+    start: new Date(2025, 0, 6),
+    end: new Date(2025, 0, 8),
+    allDay: true,
+    color: '#8b5cf6',
+  },
+];
+```
+
+Multi-day events automatically:
+- Span as a single bar across days in Month and Week views
+- Split at week boundaries in Month view
+- Appear in the dedicated all-day section in Week and Day views
+- Support drag-and-drop (preserves event duration)
+- Work with the allDay toggle in the event creation modal
 
 ## Timezone Support
 

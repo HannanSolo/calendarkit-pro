@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { format, isSameDay, differenceInMinutes, isToday, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { CalendarEvent } from '../types';
@@ -6,6 +6,7 @@ import { cn } from '../utils';
 import { DraggableEvent } from '../components/dnd/DraggableEvent';
 import { DroppableCell } from '../components/dnd/DroppableCell';
 import { ResizableEvent } from '../components/dnd/ResizableEvent';
+import { partitionEvents, computeAllDayLayout, isAllDayEvent } from '../lib/allDayLayout';
 import { Locale } from 'date-fns';
 
 interface WeekViewProps {
@@ -30,9 +31,11 @@ export const WeekView: React.FC<WeekViewProps> = ({
   readonly,
 }) => {
   // Generate days for the week
-  const start = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const end = endOfWeek(currentDate, { weekStartsOn: 1 });
-  const weekDays = eachDayOfInterval({ start, end });
+  const weekDays = useMemo(() => {
+    const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const end = endOfWeek(currentDate, { weekStartsOn: 1 });
+    return eachDayOfInterval({ start, end });
+  }, [currentDate]);
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
   const hourHeight = 60; // px
@@ -58,11 +61,43 @@ export const WeekView: React.FC<WeekViewProps> = ({
   }, []);
 
   // Timezone adjustment helper
-  const getZonedDate = (date: Date) => {
+  const getZonedDate = useCallback((date: Date) => {
     return timezone ? toZonedTime(date, timezone) : date;
-  };
+  }, [timezone]);
 
   const zonedNow = getZonedDate(new Date());
+
+  // Partition events into all-day and timed
+  const { allDayEvents, timedEvents } = useMemo(
+    () => partitionEvents(events),
+    [events]
+  );
+
+  // Compute all-day layout for this week
+  const allDayLayout = useMemo(
+    () => computeAllDayLayout(weekDays, allDayEvents, getZonedDate),
+    [weekDays, allDayEvents, getZonedDate]
+  );
+
+  // Pre-calculate timed event buckets for O(1) access per day column
+  const eventsByDay = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    timedEvents.forEach(event => {
+      const zonedStart = getZonedDate(event.start);
+      const key = format(zonedStart, 'yyyy-MM-dd');
+      if (!map.has(key)) {
+        map.set(key, []);
+      }
+      map.get(key)!.push(event);
+    });
+    return map;
+  }, [timedEvents, getZonedDate]);
+
+  const allDayLaneHeight = 28; // px per lane
+  const maxVisibleLanes = 3;
+  const [showAllLanes, setShowAllLanes] = React.useState(false);
+  const visibleLaneCount = showAllLanes ? allDayLayout.laneCount : Math.min(allDayLayout.laneCount, maxVisibleLanes);
+  const hasOverflowLanes = allDayLayout.laneCount > maxVisibleLanes;
 
   const getTimezoneDisplay = (tz: string | undefined) => {
       // Use zonedNow if tz matches, otherwise calculate for specific tz if needed
@@ -142,6 +177,58 @@ export const WeekView: React.FC<WeekViewProps> = ({
           </div>
         </div>
 
+        {/* All-Day Section */}
+        {allDayLayout.laneCount > 0 && (
+          <div className="flex border-b-[0.5px] border-border/50 bg-muted/5 sticky top-[73px] z-[19]">
+            <div className="flex-none w-16 border-r-[0.5px] border-border/30 flex items-center justify-center">
+              <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight text-center">
+                All<br/>day
+              </span>
+            </div>
+            <div className="flex-1 relative">
+              <div
+                className="grid grid-cols-7 relative"
+                style={{ height: visibleLaneCount * allDayLaneHeight + 4, overflow: 'hidden' }}
+              >
+                {allDayLayout.segments.map((segment) => (
+                  <DraggableEvent key={`allday-${segment.event.id}-${segment.startCol}`} event={segment.event}>
+                    <div
+                      className={cn(
+                        "absolute text-xs font-medium px-2 py-1 truncate cursor-pointer transition-all hover:shadow-md hover:brightness-95 z-10",
+                        segment.isStart && "rounded-l-md",
+                        segment.isEnd && "rounded-r-md"
+                      )}
+                      style={{
+                        top: segment.lane * allDayLaneHeight + 2,
+                        left: `calc(${(segment.startCol / 7) * 100}% + 2px)`,
+                        width: `calc(${(segment.span / 7) * 100}% - 4px)`,
+                        height: allDayLaneHeight - 4,
+                        backgroundColor: `${segment.event.color || 'var(--primary)'}30`,
+                        color: segment.event.color || 'var(--primary)',
+                        borderLeft: segment.isStart ? `3px solid ${segment.event.color || 'var(--primary)'}` : undefined,
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEventClick?.(segment.event);
+                      }}
+                    >
+                      {segment.isStart && segment.event.title}
+                    </div>
+                  </DraggableEvent>
+                ))}
+              </div>
+              {hasOverflowLanes && (
+                <button
+                  className="w-full text-[10px] text-primary font-semibold py-0.5 hover:bg-primary/5 transition-colors"
+                  onClick={() => setShowAllLanes(v => !v)}
+                >
+                  {showAllLanes ? 'Show less' : `+${allDayLayout.laneCount - maxVisibleLanes} more`}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Grid Content */}
         <div
           className="flex min-w-full relative"
@@ -165,11 +252,8 @@ export const WeekView: React.FC<WeekViewProps> = ({
           {/* Days Columns */}
           <div className="flex-1 grid grid-cols-7 relative">
             {weekDays.map((day, dayIndex) => {
-                // Filter events for this day
-                const dayEvents = events.filter(e => {
-                    const zonedStart = getZonedDate(e.start);
-                    return isSameDay(zonedStart, day);
-                });
+                const dayKey = format(day, 'yyyy-MM-dd');
+                const dayEvents = eventsByDay.get(dayKey) || [];
 
                 return (
                 <div key={day.toISOString()} className={cn("relative h-full", dayIndex > 0 && "border-l-[0.5px] border-border/30")}>

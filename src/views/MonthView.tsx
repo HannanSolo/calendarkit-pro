@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
-import { format, isSameMonth, isSameDay, isToday, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
+import { format, isSameMonth, isSameDay, isToday, startOfWeek, endOfWeek, eachDayOfInterval, differenceInDays } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { getMonthGrid } from '../lib/date';
 import { CalendarEvent } from '../types';
@@ -49,32 +49,43 @@ const AllDayBar = React.memo(({ segment, laneHeight, onEventClick }: {
   segment: { event: CalendarEvent; startCol: number; span: number; lane: number; isStart: boolean; isEnd: boolean };
   laneHeight: number;
   onEventClick?: (e: CalendarEvent) => void;
-}) => (
-  <DraggableEvent event={segment.event}>
-    <div
-      className={cn(
-        "absolute text-[11px] font-semibold px-2 truncate cursor-pointer transition-all hover:shadow-md hover:brightness-95 z-10 flex items-center",
-        segment.isStart && "rounded-l-md",
-        segment.isEnd && "rounded-r-md"
-      )}
-      style={{
-        top: segment.lane * laneHeight,
-        left: `calc(${(segment.startCol / 7) * 100}% + 1px)`,
-        width: `calc(${(segment.span / 7) * 100}% - 2px)`,
-        height: laneHeight - 2,
-        backgroundColor: `${segment.event.color || 'var(--primary)'}30`,
-        color: segment.event.color || 'var(--primary)',
-        borderLeft: segment.isStart ? `3px solid ${segment.event.color || 'var(--primary)'}` : undefined,
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        onEventClick?.(segment.event);
-      }}
-    >
-      {segment.isStart && segment.event.title}
-    </div>
-  </DraggableEvent>
-));
+}) => {
+  const { event } = segment;
+  const totalDays = differenceInDays(event.end, event.start);
+  const tooltip = totalDays > 0
+    ? `${event.title} (${format(event.start, 'MMM d')} – ${format(event.end, 'MMM d')})`
+    : event.title;
+
+  return (
+    <DraggableEvent event={event}>
+      <div
+        className={cn(
+          "absolute text-[11px] font-semibold px-2 truncate cursor-pointer transition-all hover:shadow-md hover:brightness-95 z-10 flex items-center",
+          segment.isStart && "rounded-l-md",
+          segment.isEnd && "rounded-r-md"
+        )}
+        style={{
+          top: segment.lane * laneHeight,
+          left: `calc(${(segment.startCol / 7) * 100}% + 1px)`,
+          width: `calc(${(segment.span / 7) * 100}% - 2px)`,
+          height: laneHeight - 2,
+          backgroundColor: `${event.color || 'var(--primary)'}30`,
+          color: event.color || 'var(--primary)',
+          borderLeft: segment.isStart ? `3px solid ${event.color || 'var(--primary)'}` : undefined,
+        }}
+        title={tooltip}
+        aria-label={tooltip}
+        role="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onEventClick?.(event);
+        }}
+      >
+        {segment.isStart && event.title}
+      </div>
+    </DraggableEvent>
+  );
+});
 
 AllDayBar.displayName = 'AllDayBar';
 
@@ -187,16 +198,24 @@ export const MonthView: React.FC<MonthViewProps> = ({
                       s => s.lane >= maxVisibleLanes && colIdx >= s.startCol && colIdx < s.startCol + s.span
                     ).length;
                     if (hiddenCount === 0) return null;
+                    const overflowLabel = `${hiddenCount} more all-day ${hiddenCount === 1 ? 'event' : 'events'}`;
                     return (
                       <div
                         key={`overflow-${colIdx}`}
-                        className="absolute text-[9px] text-primary font-semibold pointer-events-none"
+                        className="absolute text-[9px] text-primary font-semibold cursor-pointer hover:underline"
                         style={{
                           left: `calc(${(colIdx / 7) * 100}% + 4px)`,
                           bottom: 0,
                         }}
+                        title={overflowLabel}
+                        aria-label={overflowLabel}
+                        role="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDateClick?.(day);
+                        }}
                       >
-                        +{hiddenCount}
+                        +{hiddenCount} more
                       </div>
                     );
                   })}
@@ -234,7 +253,11 @@ export const MonthView: React.FC<MonthViewProps> = ({
                           {format(day, 'd', { locale })}
                         </div>
                         {dayTimedEvents.length > 0 && (
-                          <div className="text-[10px] font-medium text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">
+                          <div
+                            className="text-[10px] font-medium text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full"
+                            title={`${dayTimedEvents.length} ${dayTimedEvents.length === 1 ? 'event' : 'events'}`}
+                            aria-label={`${dayTimedEvents.length} ${dayTimedEvents.length === 1 ? 'event' : 'events'}`}
+                          >
                             {dayTimedEvents.length}
                           </div>
                         )}
@@ -245,7 +268,12 @@ export const MonthView: React.FC<MonthViewProps> = ({
                            <EventItem key={`${event.id}-${dayKey}`} event={event} onEventClick={onEventClick} />
                         ))}
                         {dayTimedEvents.length > 3 && (
-                            <div className="text-[10px] text-primary font-semibold text-center py-0.5 px-2 rounded-md bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors">
+                            <div
+                              className="text-[10px] text-primary font-semibold text-center py-0.5 px-2 rounded-md bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors"
+                              title={`${dayTimedEvents.length - 3} more ${dayTimedEvents.length - 3 === 1 ? 'event' : 'events'}`}
+                              aria-label={`${dayTimedEvents.length - 3} more ${dayTimedEvents.length - 3 === 1 ? 'event' : 'events'}`}
+                              role="button"
+                            >
                                 +{dayTimedEvents.length - 3} more
                             </div>
                         )}

@@ -6,12 +6,13 @@ import { cn } from '../../utils';
 
 interface DraggableEventProps extends React.HTMLAttributes<HTMLDivElement> {
   event: CalendarEvent;
+  dragId?: string;
   children: React.ReactNode;
 }
 
-export const DraggableEvent: React.FC<DraggableEventProps> = ({ event, children, className, style: propStyle, ...props }) => {
+export const DraggableEvent: React.FC<DraggableEventProps> = ({ event, dragId, children, className, style: propStyle, ...props }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: event.id,
+    id: dragId || event.id,
     data: { event },
   });
 

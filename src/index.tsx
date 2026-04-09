@@ -129,7 +129,7 @@ export const Scheduler: React.FC<CalendarProps> = ({
   const dndSensors = readOnly ? [] : sensors;
 
   // Handle event resize
-  const handleEventResize = (event: CalendarEvent, newEnd: Date) => {
+  const handleEventResize = useCallback((event: CalendarEvent, newEnd: Date) => {
     if (readOnly) return;
 
     // Call the external callback if provided
@@ -144,7 +144,7 @@ export const Scheduler: React.FC<CalendarProps> = ({
         end: newEnd
       });
     }
-  };
+  }, [readOnly, onEventResize, onEventUpdate]);
   
   const id = useId();
 
@@ -180,52 +180,49 @@ export const Scheduler: React.FC<CalendarProps> = ({
     ...translations
   };
 
-  const handleDragStart = (event: any) => {
+  const handleDragStart = useCallback((event: any) => {
     const { active } = event;
-    const draggedEvent = expandedEvents.find(e => e.id === active.id);
+    const draggedEvent = active.data.current?.event as CalendarEvent | undefined;
     if (draggedEvent) {
         setActiveDragEvent(draggedEvent);
     }
-  };
+  }, []);
 
-  const onDragEndWrapper = (event: any) => {
+  const onDragEndWrapper = useCallback((event: any) => {
       setActiveDragEvent(null);
       handleDragEnd(event);
-  };
+  }, [handleDragEnd]);
   
   // Calculate height for week/day view drag overlay
   const getDragHeight = () => {
       if (!activeDragEvent) return undefined;
-      
+
       if (view === 'resource') {
-        return 80; // Approximate height for resource view events
+        return 80;
       }
+
+      // All-day events get a small bar height in any view
+      if (activeDragEvent.allDay) return 28;
 
       if (view !== 'week' && view !== 'day') return undefined;
       const duration = differenceInMinutes(activeDragEvent.end, activeDragEvent.start);
-      // 60px per hour
-      const height = (duration / 60) * 60; // 60px height base
-      // If DayView uses 80px, we should account for that. 
-      // Current implementation: WeekView = 60px, DayView = 80px.
-      // But DayView uses 80px in DayView.tsx.
-      // Let's assume 60px for now as default or pass a prop.
-      // Or check view state.
       const hourHeight = view === 'day' ? 80 : 60;
       return (duration / 60) * hourHeight;
   };
 
   const getDragWidth = () => {
-      if (view === 'month') return '100%';
-      
+      if (view === 'month') return '200px';
+
+      // All-day events get a wider bar in week/day views
+      if (activeDragEvent?.allDay) return '200px';
+
       if (view === 'resource' && activeDragEvent) {
           const duration = differenceInMinutes(activeDragEvent.end, activeDragEvent.start);
-          const width = (duration / 60) * 100; // 100px per hour in ResourceView
+          const width = (duration / 60) * 100;
           return `${Math.max(width, 4)}px`;
       }
 
-      // For Week/Day views, use a fixed width that looks like a column
-      // Ideally we would measure the column width, but a fixed reasonable width works for the ghost
-      return '150px'; 
+      return '150px';
   };
 
   // Filter events based on active calendars

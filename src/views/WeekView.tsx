@@ -1,13 +1,55 @@
 import React, { useMemo, useCallback } from 'react';
-import { format, isSameDay, differenceInMinutes, isToday, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
+import { format, isSameDay, differenceInMinutes, isToday, startOfWeek, endOfWeek, eachDayOfInterval, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { CalendarEvent } from '../types';
 import { cn } from '../utils';
 import { DraggableEvent } from '../components/dnd/DraggableEvent';
 import { DroppableCell } from '../components/dnd/DroppableCell';
 import { ResizableEvent } from '../components/dnd/ResizableEvent';
-import { partitionEvents, computeAllDayLayout, isAllDayEvent } from '../lib/allDayLayout';
+import { partitionEvents, computeAllDayLayout } from '../lib/allDayLayout';
 import { Locale } from 'date-fns';
+
+// Hoisted static JSX to avoid recreation (rendering-hoist-jsx)
+const emptyCell = <div className="w-full h-full" />;
+
+// Memoized all-day bar for WeekView (rerender-memo)
+const WeekAllDayBar = React.memo(({ segment, laneHeight, onEventClick }: {
+  segment: { event: CalendarEvent; startCol: number; span: number; lane: number; isStart: boolean; isEnd: boolean };
+  laneHeight: number;
+  onEventClick?: (e: CalendarEvent) => void;
+}) => (
+  <DraggableEvent
+    event={segment.event}
+    className="absolute z-10"
+    style={{
+      top: segment.lane * laneHeight + 2,
+      left: `calc(${(segment.startCol / 7) * 100}% + 2px)`,
+      width: `calc(${(segment.span / 7) * 100}% - 4px)`,
+      height: laneHeight - 4,
+    }}
+  >
+    <div
+      className={cn(
+        "w-full h-full text-xs font-medium px-2 py-1 truncate cursor-pointer transition-all hover:shadow-md hover:brightness-95",
+        segment.isStart && "rounded-l-md",
+        segment.isEnd && "rounded-r-md"
+      )}
+      style={{
+        backgroundColor: `${segment.event.color || 'var(--primary)'}30`,
+        color: segment.event.color || 'var(--primary)',
+        borderLeft: segment.isStart ? `3px solid ${segment.event.color || 'var(--primary)'}` : undefined,
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onEventClick?.(segment.event);
+      }}
+    >
+      {segment.isStart && segment.event.title}
+    </div>
+  </DraggableEvent>
+));
+
+WeekAllDayBar.displayName = 'WeekAllDayBar';
 
 interface WeekViewProps {
   currentDate: Date;
@@ -73,7 +115,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
     [events]
   );
 
-  // Compute all-day layout for this week
+  // Compute all-day layout for this week (spanning bars)
   const allDayLayout = useMemo(
     () => computeAllDayLayout(weekDays, allDayEvents, getZonedDate),
     [weekDays, allDayEvents, getZonedDate]
@@ -100,14 +142,11 @@ export const WeekView: React.FC<WeekViewProps> = ({
   const hasOverflowLanes = allDayLayout.laneCount > maxVisibleLanes;
 
   const getTimezoneDisplay = (tz: string | undefined) => {
-      // Use zonedNow if tz matches, otherwise calculate for specific tz if needed
-      // But here tz IS the current view timezone.
       const date = now;
       let displayTime = '';
       let acronym = '';
 
       if (!tz) {
-          // Local time
           displayTime = format(date, 'HH:mm');
           try {
              acronym = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' })
@@ -118,23 +157,15 @@ export const WeekView: React.FC<WeekViewProps> = ({
           try {
               const zDate = toZonedTime(date, tz);
               displayTime = format(zDate, 'HH:mm');
-              
-              // Get acronym
-              // Note: Intl.DateTimeFormat needs the IANA timezone string
               acronym = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' })
                   .formatToParts(date)
                   .find(part => part.type === 'timeZoneName')?.value || '';
           } catch (e) {
-              // Fallback
               displayTime = format(date, 'HH:mm');
               acronym = tz;
           }
       }
-      
-      // Simplify generic long names if necessary, though 'short' usually works well.
-      // E.g. "GMT-5" is often returned for offsets. The user asked for "EST", "PST".
-      // Chrome/Node usually return "EST" for America/New_York.
-      
+
       return (
         <div className="flex flex-col items-center justify-center leading-tight">
             <span>{displayTime}</span>
@@ -177,7 +208,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
           </div>
         </div>
 
-        {/* All-Day Section */}
+        {/* All-Day Section with per-column drop targets */}
         {allDayLayout.laneCount > 0 && (
           <div className="flex border-b-[0.5px] border-border/50 bg-muted/5 sticky top-[73px] z-[19]">
             <div className="flex-none w-16 border-r-[0.5px] border-border/30 flex items-center justify-center">
@@ -187,34 +218,34 @@ export const WeekView: React.FC<WeekViewProps> = ({
             </div>
             <div className="flex-1 relative">
               <div
-                className="grid grid-cols-7 relative"
+                className="relative"
                 style={{ height: visibleLaneCount * allDayLaneHeight + 4, overflow: 'hidden' }}
               >
-                {allDayLayout.segments.map((segment) => (
-                  <DraggableEvent key={`allday-${segment.event.id}-${segment.startCol}`} event={segment.event}>
-                    <div
+                {/* Per-column droppable targets (underneath the spanning bars) */}
+                <div className="absolute inset-0 grid grid-cols-7">
+                  {weekDays.map((day, index) => (
+                    <DroppableCell
+                      key={`allday-drop-${day.toISOString()}`}
+                      id={`allday-${day.toISOString()}`}
+                      date={startOfDay(day)}
                       className={cn(
-                        "absolute text-xs font-medium px-2 py-1 truncate cursor-pointer transition-all hover:shadow-md hover:brightness-95 z-10",
-                        segment.isStart && "rounded-l-md",
-                        segment.isEnd && "rounded-r-md"
+                        "h-full",
+                        index > 0 && "border-l-[0.5px] border-border/30"
                       )}
-                      style={{
-                        top: segment.lane * allDayLaneHeight + 2,
-                        left: `calc(${(segment.startCol / 7) * 100}% + 2px)`,
-                        width: `calc(${(segment.span / 7) * 100}% - 4px)`,
-                        height: allDayLaneHeight - 4,
-                        backgroundColor: `${segment.event.color || 'var(--primary)'}30`,
-                        color: segment.event.color || 'var(--primary)',
-                        borderLeft: segment.isStart ? `3px solid ${segment.event.color || 'var(--primary)'}` : undefined,
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEventClick?.(segment.event);
-                      }}
                     >
-                      {segment.isStart && segment.event.title}
-                    </div>
-                  </DraggableEvent>
+                      {emptyCell}
+                    </DroppableCell>
+                  ))}
+                </div>
+
+                {/* Spanning event bars (visually on top) */}
+                {allDayLayout.segments.map((segment) => (
+                  <WeekAllDayBar
+                    key={`allday-${segment.event.id}-${segment.startCol}`}
+                    segment={segment}
+                    laneHeight={allDayLaneHeight}
+                    onEventClick={onEventClick}
+                  />
                 ))}
               </div>
               {hasOverflowLanes && (
@@ -270,19 +301,19 @@ export const WeekView: React.FC<WeekViewProps> = ({
                                     const cellDate = new Date(day);
                                     cellDate.setHours(hour, minute, 0, 0);
                                     const cellId = cellDate.toISOString();
-                                    
+
                                     return (
-                                        <DroppableCell 
+                                        <DroppableCell
                                             key={minute}
                                             id={cellId}
                                             date={cellDate}
                                             className="w-full absolute left-0 right-0 z-0 transition-colors"
-                                            style={{ 
-                                                height: '25%', 
-                                                top: `${(minute / 60) * 100}%` 
+                                            style={{
+                                                height: '25%',
+                                                top: `${(minute / 60) * 100}%`
                                             }}
                                         >
-                                            <div 
+                                            <div
                                                 className="w-full h-full bg-transparent cursor-pointer"
                                                 onClick={() => onTimeSlotClick?.(cellDate)}
                                             />
@@ -292,11 +323,9 @@ export const WeekView: React.FC<WeekViewProps> = ({
                             </div>
                         );
                     })}
-                    
+
                     {/* Events Overlay */}
                     {dayEvents.map((event) => {
-                        // Calculate layout for overlapping events
-                        // Find all events that overlap with this one
                         const overlappingEvents = dayEvents.filter(e => {
                             if (e.id === event.id) return false;
                             const s1 = getZonedDate(event.start).getTime();
@@ -306,33 +335,28 @@ export const WeekView: React.FC<WeekViewProps> = ({
                             return s1 < e2 && e1 > s2;
                         });
 
-                        // Calculate horizontal position (simple version)
-                        // A more robust algorithm would use graph coloring or column packing
-                        // For now, we can check how many simultaneous events exist and assign width/left
-                        
-                        // Sort overlapping group by start time
-                        const group = [event, ...overlappingEvents].sort((a, b) => 
+                        const group = [event, ...overlappingEvents].sort((a, b) =>
                             getZonedDate(a.start).getTime() - getZonedDate(b.start).getTime() ||
-                            (a.id > b.id ? 1 : -1) // stable sort
+                            (a.id > b.id ? 1 : -1)
                         );
-                        
+
                         const index = group.findIndex(e => e.id === event.id);
                         const count = group.length;
-                        
+
                         const widthPercent = 100 / count;
                         const leftPercent = index * widthPercent;
 
                         const zonedEventStart = getZonedDate(event.start);
                         const zonedEventEnd = getZonedDate(event.end);
-                        
+
                         const startMinutes = zonedEventStart.getHours() * 60 + zonedEventStart.getMinutes();
                         const durationMinutes = differenceInMinutes(zonedEventEnd, zonedEventStart);
-                        
+
                         const top = (startMinutes / 60) * hourHeight;
                         const height = (durationMinutes / 60) * hourHeight;
-                        
+
                         const isShortEvent = durationMinutes < 60;
-                    
+
                         return (
                             <DraggableEvent
                                 key={`${event.id}-${day.toISOString()}`}
@@ -343,7 +367,6 @@ export const WeekView: React.FC<WeekViewProps> = ({
                                     height: `${Math.max(height, 20)}px`,
                                     left: `${leftPercent}%`,
                                     width: `${widthPercent}%`,
-                                    // Add minimal spacing between overlapping events
                                     paddingRight: count > 1 ? '2px' : '0'
                                 }}
                             >
@@ -362,7 +385,6 @@ export const WeekView: React.FC<WeekViewProps> = ({
                                             readonly ? "cursor-default" : "cursor-grab active:cursor-grabbing",
                                             !event.color && "border-primary/20 bg-primary/10",
                                             isShortEvent ? "px-1 flex items-center justify-center" : "p-2",
-                                            // Add active border for overlapped events to distinguish them
                                             count > 1 && "border-l-4 border-l-primary/50"
                                         )}
                                         style={{
@@ -396,7 +418,6 @@ export const WeekView: React.FC<WeekViewProps> = ({
                                                     )}
                                                 </>
                                             )}
-                                            {/* Overlap Badge */}
                                             {count > 1 && !isShortEvent && (
                                                 <div className="absolute top-1 right-1 bg-background/80 backdrop-blur-sm rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold text-muted-foreground border border-border shadow-sm">
                                                     {count}
@@ -408,7 +429,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
                             </DraggableEvent>
                         );
                     })}
-                    
+
                     {/* Current Time Indicator */}
                     {isToday(day) && (
                     <div
@@ -426,9 +447,9 @@ export const WeekView: React.FC<WeekViewProps> = ({
             })}
           </div>
         </div>
-        
+
         {/* Current Time Label (Left Axis) */}
-        <div 
+        <div
             className="absolute left-0 w-16 pointer-events-none z-30 flex justify-end pr-2"
             style={{
                 top: `${(zonedNow.getHours() * 60 + zonedNow.getMinutes()) / 60 * hourHeight + 80}px`,

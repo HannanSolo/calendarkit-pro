@@ -1,12 +1,12 @@
 import React, { useMemo, useCallback } from 'react';
-import { format, isSameMonth, isSameDay, isToday, startOfWeek, endOfWeek, eachDayOfInterval, differenceInDays } from 'date-fns';
+import { format, isSameMonth, isToday, startOfWeek, endOfWeek, eachDayOfInterval, differenceInDays } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { getMonthGrid } from '../lib/date';
 import { CalendarEvent } from '../types';
 import { cn } from '../utils';
 import { DraggableEvent } from '../components/dnd/DraggableEvent';
 import { DroppableCell } from '../components/dnd/DroppableCell';
-import { partitionEvents, computeAllDayLayout, isAllDayEvent } from '../lib/allDayLayout';
+import { partitionEvents, computeAllDayLayout } from '../lib/allDayLayout';
 import { Locale } from 'date-fns';
 
 interface MonthViewProps {
@@ -57,18 +57,24 @@ const AllDayBar = React.memo(({ segment, laneHeight, onEventClick }: {
     : event.title;
 
   return (
-    <DraggableEvent event={event}>
+    <DraggableEvent
+      event={event}
+      dragId={`${event.id}-seg-${segment.startCol}`}
+      className="absolute z-10"
+      style={{
+        top: segment.lane * laneHeight,
+        left: `calc(${(segment.startCol / 7) * 100}% + 1px)`,
+        width: `calc(${(segment.span / 7) * 100}% - 2px)`,
+        height: laneHeight - 2,
+      }}
+    >
       <div
         className={cn(
-          "absolute text-[11px] font-semibold px-2 truncate cursor-pointer transition-all hover:shadow-md hover:brightness-95 z-10 flex items-center",
+          "w-full h-full text-[11px] font-semibold px-2 truncate cursor-pointer transition-all hover:shadow-md hover:brightness-95 flex items-center",
           segment.isStart && "rounded-l-md",
           segment.isEnd && "rounded-r-md"
         )}
         style={{
-          top: segment.lane * laneHeight,
-          left: `calc(${(segment.startCol / 7) * 100}% + 1px)`,
-          width: `calc(${(segment.span / 7) * 100}% - 2px)`,
-          height: laneHeight - 2,
           backgroundColor: `${event.color || 'var(--primary)'}30`,
           color: event.color || 'var(--primary)',
           borderLeft: segment.isStart ? `3px solid ${event.color || 'var(--primary)'}` : undefined,
@@ -203,12 +209,25 @@ export const MonthView: React.FC<MonthViewProps> = ({
                 })}
               </div>
 
-              {/* All-Day Spanning Section */}
+              {/* All-Day Spanning Section with per-day drop targets */}
               {layout.laneCount > 0 && (
                 <div
                   className="grid grid-cols-7 relative"
                   style={{ height: allDaySectionHeight, overflow: 'hidden' }}
                 >
+                  {/* Per-day droppable targets (underneath the spanning bars) */}
+                  {week.map((day, colIdx) => (
+                    <DroppableCell
+                      key={`allday-${day.toISOString()}`}
+                      id={`allday-month-${day.toISOString()}`}
+                      date={day}
+                      className="h-full border-r-[0.5px] border-border/30 last:border-r-0"
+                    >
+                      <div className="w-full h-full" />
+                    </DroppableCell>
+                  ))}
+
+                  {/* Spanning event bars (visually on top) */}
                   {layout.segments
                     .filter(s => s.lane < maxVisibleLanes)
                     .map(segment => (
@@ -229,7 +248,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
                     return (
                       <div
                         key={`overflow-${colIdx}`}
-                        className="absolute text-[9px] text-primary font-semibold cursor-pointer hover:underline"
+                        className="absolute text-[9px] text-primary font-semibold cursor-pointer hover:underline z-20"
                         style={{
                           left: `calc(${(colIdx / 7) * 100}% + 4px)`,
                           bottom: 0,

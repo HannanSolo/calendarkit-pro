@@ -175,11 +175,38 @@ export const MonthView: React.FC<MonthViewProps> = ({
           const allDaySectionHeight = visibleLanes > 0 ? visibleLanes * allDayLaneHeight + 2 : 0;
 
           return (
-            <div key={week[0].toISOString()}>
+            <div key={week[0].toISOString()} className="border-b-[0.5px] border-border/30">
+              {/* Day Numbers Row */}
+              <div className="grid grid-cols-7">
+                {week.map((day) => {
+                  const isCurrentMonth = isSameMonth(day, currentDate);
+                  return (
+                    <div
+                      key={day.toISOString()}
+                      className={cn(
+                        "px-2 pt-2 pb-1 border-r-[0.5px] border-border/30 last:border-r-0 cursor-pointer group",
+                        !isCurrentMonth && "bg-muted/5 text-muted-foreground/60",
+                        isToday(day) && "bg-primary/5"
+                      )}
+                      onClick={() => onDateClick?.(day)}
+                    >
+                      <div className={cn(
+                        "text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full transition-all duration-200",
+                        isToday(day)
+                          ? "bg-primary text-primary-foreground shadow-md shadow-primary/30"
+                          : "group-hover:bg-accent"
+                      )}>
+                        {format(day, 'd', { locale })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
               {/* All-Day Spanning Section */}
               {layout.laneCount > 0 && (
                 <div
-                  className="grid grid-cols-7 relative border-b-[0.5px] border-border/20"
+                  className="grid grid-cols-7 relative"
                   style={{ height: allDaySectionHeight, overflow: 'hidden' }}
                 >
                   {layout.segments
@@ -236,33 +263,13 @@ export const MonthView: React.FC<MonthViewProps> = ({
                       id={cellId}
                       date={day}
                       className={cn(
-                        "p-2 border-b-[0.5px] border-r-[0.5px] border-border/30 last:border-r-0 relative transition-all duration-200 hover:bg-accent/5 flex flex-col gap-1 overflow-hidden group",
+                        "px-2 py-1 border-r-[0.5px] border-border/30 last:border-r-0 relative transition-all duration-200 hover:bg-accent/5 flex flex-col gap-1 overflow-hidden",
                         !isCurrentMonth && "bg-muted/5 text-muted-foreground/60",
-                        isToday(day) && "bg-primary/5 ring-1 ring-inset ring-primary/20"
+                        isToday(day) && "bg-primary/5"
                       )}
                       style={{ height: `${dayCellHeight}px` }}
                       onClick={() => onDateClick?.(day)}
                     >
-                      <div className="flex justify-between items-start">
-                        <div className={cn(
-                          "text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full transition-all duration-200",
-                          isToday(day)
-                            ? "bg-primary text-primary-foreground shadow-md shadow-primary/30"
-                            : "group-hover:bg-accent"
-                        )}>
-                          {format(day, 'd', { locale })}
-                        </div>
-                        {dayTimedEvents.length > 0 && (
-                          <div
-                            className="text-[10px] font-medium text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full"
-                            title={`${dayTimedEvents.length} ${dayTimedEvents.length === 1 ? 'event' : 'events'}`}
-                            aria-label={`${dayTimedEvents.length} ${dayTimedEvents.length === 1 ? 'event' : 'events'}`}
-                          >
-                            {dayTimedEvents.length}
-                          </div>
-                        )}
-                      </div>
-
                       <div className="flex-1 flex flex-col gap-1 scrollbar-hide overflow-y-auto overflow-x-hidden">
                         {dayTimedEvents.slice(0, 3).map(event => (
                            <EventItem key={`${event.id}-${dayKey}`} event={event} onEventClick={onEventClick} />

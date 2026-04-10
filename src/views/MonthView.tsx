@@ -154,9 +154,9 @@ export const MonthView: React.FC<MonthViewProps> = ({
     return weekRows.map(week => computeAllDayLayout(week, allDayEvents, getZonedDate));
   }, [weekRows, allDayEvents, getZonedDate]);
 
-  const allDayLaneHeight = 22; // px per lane in month view
-  const maxVisibleLanes = 2;
-  const dayCellHeight = 100; // px
+  const allDayLaneHeight = 22; // px per all-day lane
+  const timedEventSlotHeight = 28; // px per timed event item
+  const weekRowContentHeight = 130; // total px budget shared by all-day + timed events
 
   return (
     <div className="flex flex-col h-full bg-background border-[0.5px] scrollbar-hide border-border/50 rounded-2xl overflow-hidden min-w-[800px] md:min-w-0 shadow-sm">
@@ -176,9 +176,14 @@ export const MonthView: React.FC<MonthViewProps> = ({
         {/* Week Rows */}
         {weekRows.map((week, weekIndex) => {
           const layout = weekLayouts[weekIndex];
-          const visibleLanes = Math.min(layout.laneCount, maxVisibleLanes);
-          const hasOverflow = layout.laneCount > maxVisibleLanes;
+          // All-day lanes take what they need, up to the full budget
+          const maxAllDayLanes = Math.floor(weekRowContentHeight / allDayLaneHeight);
+          const visibleLanes = Math.min(layout.laneCount, maxAllDayLanes);
+          const hasAllDayOverflow = layout.laneCount > maxAllDayLanes;
           const allDaySectionHeight = visibleLanes > 0 ? visibleLanes * allDayLaneHeight + 2 : 0;
+          // Timed events get whatever height remains
+          const remainingHeight = weekRowContentHeight - allDaySectionHeight;
+          const maxTimedEvents = Math.max(1, Math.floor(remainingHeight / timedEventSlotHeight));
 
           return (
             <div key={week[0].toISOString()} className="border-b-[0.5px] border-border/30">
@@ -229,7 +234,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
 
                   {/* Spanning event bars (visually on top) */}
                   {layout.segments
-                    .filter(s => s.lane < maxVisibleLanes)
+                    .filter(s => s.lane < visibleLanes)
                     .map(segment => (
                       <AllDayBar
                         key={`${segment.event.id}-${segment.startCol}`}
@@ -239,9 +244,9 @@ export const MonthView: React.FC<MonthViewProps> = ({
                       />
                     ))}
                   {/* Overflow indicators per day */}
-                  {hasOverflow && week.map((day, colIdx) => {
+                  {hasAllDayOverflow && week.map((day, colIdx) => {
                     const hiddenCount = layout.segments.filter(
-                      s => s.lane >= maxVisibleLanes && colIdx >= s.startCol && colIdx < s.startCol + s.span
+                      s => s.lane >= visibleLanes && colIdx >= s.startCol && colIdx < s.startCol + s.span
                     ).length;
                     if (hiddenCount === 0) return null;
                     const overflowLabel = `${hiddenCount} more all-day ${hiddenCount === 1 ? 'event' : 'events'}`;
@@ -269,7 +274,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
               )}
 
               {/* Day Cells (timed events only) */}
-              <div className="grid grid-cols-7" style={{ gridAutoRows: `${dayCellHeight}px` }}>
+              <div className="grid grid-cols-7" style={{ gridAutoRows: `${remainingHeight}px` }}>
                 {week.map((day) => {
                   const dayKey = format(day, 'yyyy-MM-dd');
                   const dayTimedEvents = eventsByDay.get(dayKey) || [];
@@ -286,21 +291,21 @@ export const MonthView: React.FC<MonthViewProps> = ({
                         !isCurrentMonth && "bg-muted/5 text-muted-foreground/60",
                         isToday(day) && "bg-primary/5"
                       )}
-                      style={{ height: `${dayCellHeight}px` }}
+                      style={{ height: `${remainingHeight}px` }}
                       onClick={() => onDateClick?.(day)}
                     >
                       <div className="flex-1 flex flex-col gap-1 scrollbar-hide overflow-y-auto overflow-x-hidden">
-                        {dayTimedEvents.slice(0, 3).map(event => (
+                        {dayTimedEvents.slice(0, maxTimedEvents).map(event => (
                            <EventItem key={`${event.id}-${dayKey}`} event={event} onEventClick={onEventClick} />
                         ))}
-                        {dayTimedEvents.length > 3 && (
+                        {dayTimedEvents.length > maxTimedEvents && (
                             <div
                               className="text-[10px] text-primary font-semibold text-center py-0.5 px-2 rounded-md bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors"
-                              title={`${dayTimedEvents.length - 3} more ${dayTimedEvents.length - 3 === 1 ? 'event' : 'events'}`}
-                              aria-label={`${dayTimedEvents.length - 3} more ${dayTimedEvents.length - 3 === 1 ? 'event' : 'events'}`}
+                              title={`${dayTimedEvents.length - maxTimedEvents} more ${dayTimedEvents.length - maxTimedEvents === 1 ? 'event' : 'events'}`}
+                              aria-label={`${dayTimedEvents.length - maxTimedEvents} more ${dayTimedEvents.length - maxTimedEvents === 1 ? 'event' : 'events'}`}
                               role="button"
                             >
-                                +{dayTimedEvents.length - 3} more
+                                +{dayTimedEvents.length - maxTimedEvents} more
                             </div>
                         )}
                       </div>

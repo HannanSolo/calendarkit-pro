@@ -662,8 +662,8 @@ var MonthView = ({
 }) => {
   const days = useMemo(() => getMonthGrid(currentDate), [currentDate]);
   const weekDays = useMemo(() => {
-    const start = startOfWeek(currentDate, { weekStartsOn: 1 });
-    const end = endOfWeek(currentDate, { weekStartsOn: 1 });
+    const start = startOfWeek(currentDate, { weekStartsOn: 0 });
+    const end = endOfWeek(currentDate, { weekStartsOn: 0 });
     return eachDayOfInterval({ start, end });
   }, [currentDate]);
   const getZonedDate = useCallback((date) => {
@@ -971,8 +971,8 @@ var WeekView = ({
   readonly
 }) => {
   const weekDays = useMemo(() => {
-    const start = startOfWeek(currentDate, { weekStartsOn: 1 });
-    const end = endOfWeek(currentDate, { weekStartsOn: 1 });
+    const start = startOfWeek(currentDate, { weekStartsOn: 0 });
+    const end = endOfWeek(currentDate, { weekStartsOn: 0 });
     return eachDayOfInterval({ start, end });
   }, [currentDate]);
   const hours = Array.from({ length: 24 }, (_, i) => i);

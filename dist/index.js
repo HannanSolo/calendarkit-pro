@@ -683,8 +683,8 @@ var MonthView = ({
 }) => {
   const days = React6.useMemo(() => getMonthGrid(currentDate), [currentDate]);
   const weekDays = React6.useMemo(() => {
-    const start = dateFns.startOfWeek(currentDate, { weekStartsOn: 1 });
-    const end = dateFns.endOfWeek(currentDate, { weekStartsOn: 1 });
+    const start = dateFns.startOfWeek(currentDate, { weekStartsOn: 0 });
+    const end = dateFns.endOfWeek(currentDate, { weekStartsOn: 0 });
     return dateFns.eachDayOfInterval({ start, end });
   }, [currentDate]);
   const getZonedDate = React6.useCallback((date) => {
@@ -992,8 +992,8 @@ var WeekView = ({
   readonly
 }) => {
   const weekDays = React6.useMemo(() => {
-    const start = dateFns.startOfWeek(currentDate, { weekStartsOn: 1 });
-    const end = dateFns.endOfWeek(currentDate, { weekStartsOn: 1 });
+    const start = dateFns.startOfWeek(currentDate, { weekStartsOn: 0 });
+    const end = dateFns.endOfWeek(currentDate, { weekStartsOn: 0 });
     return dateFns.eachDayOfInterval({ start, end });
   }, [currentDate]);
   const hours = Array.from({ length: 24 }, (_, i) => i);
